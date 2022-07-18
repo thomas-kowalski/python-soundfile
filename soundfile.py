@@ -1579,3 +1579,166 @@ class LibsndfileError(SoundFileRuntimeError):
 
     def __str__(self):
         return self.prefix + self.error_string
+
+class InstrumentChunk(object):
+    """
+    """
+
+    def __init__(self, gain=0, basenote=60, detune=0, 
+                lovel=0, hivel=0, lokey=0, hikey=127, loops=[]):
+        self.basenote = basenote
+        self.detune   = detune
+        self.gain     = gain
+        self.lovel    = lovel
+        self.hivel    = hivel
+        self.lokey    = lokey
+        self.hikey    = hikey
+        self.loops    = loops  
+
+    def __repr__(self):
+        return "(basenote=%d, detune=%d, gain=%d, lovel=%d, hivel=%d, lokey=%d, hikey=%d, loops=%s)" % (
+            self.basenote, 
+            self.detune, 
+            self.gain,
+            self.lovel,
+            self.hivel,
+            self.lokey,
+            self.hikey,
+            str(self.loops)
+            )
+
+
+def to_int(e):
+    return int(_ffi.cast("int", e))
+
+class SoundFileEx(SoundFile):
+    # def __init__(self, *args, **kwargs):
+    #     sf.SoundFile.__init__(self, args, kwargs)
+
+    def get_instrument_chunk(self):
+        """
+        """
+        chunk = _ffi.new("SF_INSTRUMENT*")
+        size  = _ffi.sizeof("SF_INSTRUMENT")
+        result = _snd.sf_command(self._file, _snd.SFC_GET_INSTRUMENT, chunk, size)
+        if result == _snd.SF_FALSE:
+            error = _ffi.string(_snd.sf_strerror(self._file))
+            print(error)
+            raise RuntimeError(error)
+
+        basenote = to_int(chunk.basenote)
+        detune   = to_int(chunk.detune)
+        gain     = to_int(chunk.gain)
+        lovel    = to_int(chunk.velocity_lo)
+        hivel    = to_int(chunk.velocity_hi)
+        lokey    = to_int(chunk.key_lo)
+        hikey    = to_int(chunk.key_hi)
+        loop_count = to_int(chunk.loop_count)
+
+        loops = []
+        for i in range(loop_count):
+            start = int(chunk.loops[i].start)
+            end   = int(chunk.loops[i].end)
+            mode  = int(chunk.loops[i].mode)
+            count = int(chunk.loops[i].count)
+            loops.append((start, end, mode, count))
+
+        return InstrumentChunk(gain=gain, basenote=basenote, detune=detune, 
+                lovel=lovel, hivel=hivel, lokey=lokey, hikey=hikey, loops=loops)
+
+
+    def set_instrument_chunk(self, gain=0, basenote=60, detune=0, 
+                            lovel=1, hivel=1, lokey=0, hikey=127, loops=[]):
+        """
+
+        snd.set_instrument_chunk(basenote=note, 
+                                 detune=detune, 
+                                 loops=[(start, end)])
+        """
+        # TODO: test ranges
+        assert len(loops) < 16
+
+        chunk                = _ffi.new("SF_INSTRUMENT*")
+        chunk.basenote       = _ffi.cast("char", basenote)
+        chunk.detune         = _ffi.cast("char", detune)
+        chunk.gain           = _ffi.cast("int", gain)
+        chunk.velocity_lo    = _ffi.cast("char", lovel)
+        chunk.velocity_hi    = _ffi.cast("char", hivel)
+        chunk.key_lo         = _ffi.cast("char", lokey)
+        chunk.key_hi         = _ffi.cast("char", hikey)
+        chunk.loop_count     = _ffi.cast("int", len(loops))
+
+        for i in range(len(loops)):
+            loop    = loops[i]
+            assert len(loop) >= 2
+            start   = loop[0]
+            end     = loop[1]
+            mode    = loop[2] if len(loop) > 2 else _snd.SF_LOOP_FORWARD
+            count   = loop[3] if len(loop) > 3 else 0
+
+            chunk.loops[i].start = _ffi.cast("uint32_t", start)
+            chunk.loops[i].end   = _ffi.cast("uint32_t", end)
+            chunk.loops[i].mode  = mode
+            chunk.loops[i].count = _ffi.cast("uint32_t", count)
+
+        size    = _ffi.sizeof("SF_INSTRUMENT")
+        result  = _snd.sf_command(self._file, _snd.SFC_SET_INSTRUMENT, chunk, size)
+        if result == _snd.SF_FALSE:
+            error = _ffi.string(_snd.sf_strerror(self._file))
+            print(error)
+            raise RuntimeError(error)
+
+
+    # SFC_GET_CUE_COUNT               = 0x10CD,
+    # SFC_GET_CUE                     = 0x10CE,
+    # SFC_SET_CUE                     = 0x10CF,
+
+    def set_cues(self, cues):
+        chunk = _ffi.new("SF_CUES*")
+        chunk.cue_count = len(cues)
+        for i in range(len(cues)):
+            #chunk.cue_points[i] = cues[]
+            pass
+
+    def get_cues(self):
+        pass
+
+    def get_num_cues(self):
+        pass
+
+    # TODO: property cues using iterator (for cue in snd.cues: print cue)
+
+    def get_loop_info(self):
+        """
+        short   time_sig_num ;  /* any positive integer    > 0  */
+        short   time_sig_den ;  /* any positive power of 2 > 0  */
+        int     loop_mode ;     /* see SF_LOOP enum             */
+
+        int     num_beats ;     /* this is NOT the amount of quarter notes !!!*/
+                                /* a full bar of 4/4 is 4 beats */
+                                /* a full bar of 7/8 is 7 beats */
+
+        float   bpm ;           /* suggestion, as it can be calculated using other fields:*/
+                                /* file's length, file's sampleRate and our time_sig_den*/
+                                /* -> bpms are always the amount of _quarter notes_ per minute */
+
+        int root_key ;          /* MIDI note, or -1 for None */
+        int future [6] ;
+        """
+        chunk = _ffi.new("SF_LOOP_INFO*")
+        size  = _ffi.sizeof("SF_LOOP_INFO")
+        result = _snd.sf_command(self._file, _snd.SFC_GET_LOOP_INFO, chunk, size)
+        if result == _snd.SF_FALSE:
+            error = _ffi.string(_snd.sf_strerror(self._file))
+            print(error)
+            #raise RuntimeError(error)
+
+        num         = int(chunk.time_sig_num)
+        den         = int(chunk.time_sig_den)
+        loop_mode   = int(chunk.loop_mode)
+        num_beats   = int(chunk.num_beats)
+        bpm         = float(chunk.bpm)
+        root_key    = int(chunk.root_key)
+        print(num, den, num_beats, bpm, root_key, loop_mode)
+
+        # basenote = ffi.cast("int", chunk.basenote)

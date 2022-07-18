@@ -125,6 +125,100 @@ typedef struct SF_FORMAT_INFO
     const char* name ;
     const char* extension ;
 } SF_FORMAT_INFO ;
+
+enum
+{
+    // SFC_GET_CUE_COUNT               = 0x10CD,
+    // SFC_GET_CUE                     = 0x10CE,
+    // SFC_SET_CUE                     = 0x10CF,
+
+    SFC_GET_INSTRUMENT              = 0x10D0,
+    SFC_SET_INSTRUMENT              = 0x10D1,
+
+    SFC_GET_LOOP_INFO               = 0x10E0,
+};
+
+typedef struct
+{   int32_t     indx ;
+    uint32_t    position ;
+    int32_t     fcc_chunk ;
+    int32_t     chunk_start ;
+    int32_t     block_start ;
+    uint32_t    sample_offset ;
+    char name [256] ;
+} SF_CUE_POINT ;
+
+typedef struct 
+{   uint32_t cue_count ; 
+    SF_CUE_POINT cue_points [100] ; 
+} SF_CUES;
+
+enum
+{   /*
+    **  The loop mode field in SF_INSTRUMENT will be one of the following.
+    */
+    SF_LOOP_NONE = 800,
+    SF_LOOP_FORWARD,
+    SF_LOOP_BACKWARD,
+    SF_LOOP_ALTERNATING
+};
+
+typedef struct
+{   int gain ;
+    char basenote, detune ;
+    char velocity_lo, velocity_hi ;
+    char key_lo, key_hi ;
+    int loop_count ;
+
+    struct
+    {   int mode ;
+        uint32_t start ;
+        uint32_t end ;
+        uint32_t count ;
+    } loops [16] ; /* make variable in a sensible way */
+} SF_INSTRUMENT ;
+
+typedef struct
+{
+    short   time_sig_num ;  /* any positive integer    > 0  */
+    short   time_sig_den ;  /* any positive power of 2 > 0  */
+    int     loop_mode ;     /* see SF_LOOP enum             */
+
+    int     num_beats ;     /* this is NOT the amount of quarter notes !!!*/
+                            /* a full bar of 4/4 is 4 beats */
+                            /* a full bar of 7/8 is 7 beats */
+
+    float   bpm ;           /* suggestion, as it can be calculated using other fields:*/
+                            /* file's length, file's sampleRate and our time_sig_den*/
+                            /* -> bpms are always the amount of _quarter notes_ per minute */
+
+    int root_key ;          /* MIDI note, or -1 for None */
+    int future [6] ;
+} SF_LOOP_INFO ;
+
+struct SF_CHUNK_INFO
+{   char        id [64] ;   /* The chunk identifier. */
+    unsigned    id_size ;   /* The size of the chunk identifier. */
+    unsigned    datalen ;   /* The size of that data. */
+    void        *data ;     /* Pointer to the data. */
+} ;
+
+typedef struct SF_CHUNK_INFO SF_CHUNK_INFO ;
+
+int sf_set_chunk (SNDFILE * sndfile, const SF_CHUNK_INFO * chunk_info) ;
+typedef struct SF_CHUNK_ITERATOR SF_CHUNK_ITERATOR ;
+
+SF_CHUNK_ITERATOR *
+sf_get_chunk_iterator (SNDFILE * sndfile, const SF_CHUNK_INFO * chunk_info) ;
+
+SF_CHUNK_ITERATOR *
+sf_next_chunk_iterator (SF_CHUNK_ITERATOR * iterator) ;
+
+int
+sf_get_chunk_size (const SF_CHUNK_ITERATOR * it, SF_CHUNK_INFO * chunk_info) ;
+
+int
+sf_get_chunk_data (const SF_CHUNK_ITERATOR * it, SF_CHUNK_INFO * chunk_info) ;
 """)
 
 platform = os.environ.get('PYSOUNDFILE_PLATFORM', sys.platform)
